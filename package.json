@@ -1,6 +1,6 @@
 {
   "name": "glideclaw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first rolling-context AI CLI built with Bun + SQLite.",
   "bin": {
     "glideclaw": "./dist/index.js"
@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build": "bun build ./src/bin.ts --target=bun --outfile ./dist/index.js && bun run ./scripts/add-shebang.ts ./dist/index.js",
+    "web": "bun run src/server.ts",
     "test": "bun test",
     "prepublishOnly": "bun run build && bun test"
   },
