@@ -21,11 +21,16 @@ function usage() {
       "用法:",
       "  glideclaw                 进入对话（同 chat）",
       "  glideclaw chat            循环对话模式",
+      "  glideclaw web [端口]      启动 Web 管理界面（默认 8001）",
       "  glideclaw init            初始化写入 ~/.glideclawrc",
       "  glideclaw config          修改记忆天数（1-30）",
       "  glideclaw status          查看状态（db 大小、窗口天数等）",
       "  glideclaw clear           清空本地对话记录",
       "  glideclaw reset-db        删除并重建本地数据库文件",
+      "",
+      "示例:",
+      "  glideclaw web             使用默认端口 8001",
+      "  glideclaw web 3000        使用自定义端口 3000",
     ].join("\n"),
   );
 }
@@ -243,10 +248,191 @@ export async function cmdChat() {
   }
 }
 
+export async function cmdWeb(argv: string[] = []) {
+  intro(chalk.bold("启动 Web 管理界面"));
+
+  try {
+    const config = await loadConfig();
+    
+    // 动态导入 server.ts
+    const { serve } = await import("bun");
+    const { resolve } = await import("node:path");
+    const { MetaStore } = await import("./core/meta");
+
+    // 从参数中解析端口号，默认 8001
+    let PORT = 8001;
+    if (argv.length > 0) {
+      const portArg = argv[0];
+      const parsedPort = Number.parseInt(portArg, 10);
+      if (!Number.isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
+        PORT = parsedPort;
+      } else {
+        console.warn(chalk.yellow(`⚠ 无效的端口号: ${portArg}，使用默认端口 8001`));
+      }
+    }
+
+    // 获取 UI 文件的正确路径
+    // 处理两种场景：
+    // 1. 开发时：import.meta.dir 指向 src，UI 文件在 src/ui/
+    // 2. npm 包：import.meta.dir 指向 dist，UI 文件在 ../src/ui/
+    async function getUiPath(filename: string): Promise<string> {
+      const { dirname } = await import("node:path");
+      const currentDir = import.meta.dir;
+      
+      const searchPaths = [
+        resolve(currentDir, `./ui/${filename}`),           // 开发时
+        resolve(currentDir, `../src/ui/${filename}`),      // npm 包全局安装
+        resolve(dirname(currentDir), `src/ui/${filename}`), // npm 包另一种情况
+      ];
+      
+      for (const uiPath of searchPaths) {
+        const file = Bun.file(uiPath);
+        if (await file.exists()) {
+          return uiPath;
+        }
+      }
+      
+      throw new Error(
+        `无法找到 UI 文件: ${filename}\n` +
+        `已搜索路径:\n${searchPaths.map((p) => `  - ${p}`).join("\n")}`
+      );
+    }
+
+    async function loadHtmlPage(): Promise<string> {
+      const htmlPath = await getUiPath("index.html");
+      const htmlFile = Bun.file(htmlPath);
+      return await htmlFile.text();
+    }
+
+    async function createMeta() {
+      return new MetaStore({ dbPath: config.dbPath });
+    }
+
+    function jsonResponse(body: unknown, init?: ResponseInit): Response {
+      return new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        ...init,
+      });
+    }
+
+    function errorResponse(message: string, status = 400): Response {
+      return jsonResponse({ error: message }, { status });
+    }
+
+    serve({
+      port: PORT,
+      fetch: async (req) => {
+        const url = new URL(req.url);
+        const { pathname } = url;
+
+        if (req.method === "GET" && pathname === "/") {
+          const html = await loadHtmlPage();
+          return new Response(html, {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+
+        // 服务静态文件 (CSS 和 JS)
+        if (req.method === "GET" && (pathname.endsWith(".css") || pathname.endsWith(".js"))) {
+          try {
+            const filename = pathname.substring(1); // 移除前导 /
+            const filePath = await getUiPath(filename);
+            const file = Bun.file(filePath);
+            const contentType = pathname.endsWith(".css") ? "text/css" : "application/javascript";
+            return new Response(file, {
+              headers: { "Content-Type": contentType + "; charset=utf-8" },
+            });
+          } catch {
+            return new Response("Not Found", { status: 404 });
+          }
+        }
+
+        if (pathname === "/api/tables" && req.method === "GET") {
+          const meta = await createMeta();
+          try {
+            return jsonResponse({ tables: meta.listTables() });
+          } finally {
+            meta.close();
+          }
+        }
+
+        const tableMatch = pathname.match(/^\/api\/table\/([^/]+)(?:\/([^/]+))?$/);
+        if (tableMatch) {
+          const rawTable = tableMatch[1] ?? "";
+          const rawId = tableMatch[2] ?? "";
+          const table = decodeURIComponent(rawTable) as any;
+          const id = rawId ? decodeURIComponent(rawId) : undefined;
+
+          if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+            return errorResponse("不支持的表：" + table, 404);
+          }
+
+          const meta = await createMeta();
+          try {
+            if (req.method === "GET" && !id) {
+              const rows = meta.getRows(table, 200);
+              return jsonResponse({ rows });
+            }
+
+            if (req.method === "DELETE" && id) {
+              meta.deleteRow(table, id);
+              return jsonResponse({ ok: true });
+            }
+
+            const bodyText = await req.text();
+            const payload = bodyText ? JSON.parse(bodyText) : {};
+
+            if (req.method === "POST" && !id) {
+              const newId = meta.insertRow(table, payload ?? {});
+              return jsonResponse({ id: newId });
+            }
+
+            if (req.method === "PUT" && id) {
+              meta.updateRow(table, id, payload ?? {});
+              return jsonResponse({ ok: true });
+            }
+
+            return errorResponse("不支持的操作", 405);
+          } catch (e: any) {
+            return errorResponse(e?.message ?? String(e), 500);
+          } finally {
+            meta.close();
+          }
+        }
+
+        if (pathname.startsWith("/api/export/") && req.method === "GET") {
+          const table = decodeURIComponent(pathname.replace("/api/export/", "")) as any;
+          if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+            return errorResponse("不支持的表：" + table, 404);
+          }
+          const meta = await createMeta();
+          try {
+            const rows = meta.getRows(table, 10_000);
+            return jsonResponse({ rows });
+          } finally {
+            meta.close();
+          }
+        }
+
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    console.log(chalk.green(`✓ Web 管理界面启动成功！`));
+    console.log(chalk.cyan(`✓ 打开浏览器访问: http://localhost:${PORT}`));
+    console.log(chalk.dim(`✓ 数据库位置: ${config.dbPath}`));
+    console.log(chalk.dim(`✓ 按 Ctrl+C 退出\n`));
+  } catch (error) {
+    console.error(chalk.red("启动失败:"), error);
+    process.exit(1);
+  }
+}
+
 export async function runCli(argv = process.argv.slice(2)) {
-  const [cmd] = argv;
+  const [cmd, ...args] = argv;
 
   if (!cmd || cmd === "chat") return cmdChat();
+  if (cmd === "web") return cmdWeb(args);
   if (cmd === "init") return cmdInit();
   if (cmd === "config") return cmdConfig();
   if (cmd === "status") return cmdStatus();
