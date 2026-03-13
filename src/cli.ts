@@ -16,6 +16,7 @@ import { AssistantManager } from "./core/assistant";
 import { streamChatToStdout } from "./core/llm";
 import type { ChatMessage } from "./types/chat";
 import { estimateTokensFromMessages } from "./utils/tokens";
+import { enrichMessageWithFileContent } from "./core/file-handler";
 
 function usage() {
   console.log(
@@ -231,15 +232,24 @@ export async function cmdChat() {
         break;
       }
 
+      // 处理文件操作：如果用户消息中包含文件操作指令，先执行文件操作
+      let enrichedMessage = q;
+      try {
+        enrichedMessage = await enrichMessageWithFileContent(q);
+      } catch (error) {
+        console.warn(chalk.yellow("文件操作处理出错:"), error);
+        // 继续使用原始消息
+      }
+
       const history = memory.getContext(cfg.windowDays);
       // 构建消息：系统提示词 + 历史对话 + 当前输入
       const messages: ChatMessage[] = [
         { role: "system", content: systemPrompt },
         ...history,
-        { role: "user", content: q },
+        { role: "user", content: enrichedMessage },
       ];
 
-      // 保存用户消息
+      // 保存用户消息（保存原始消息，不包含文件操作结果）
       memory.saveMessage("user", q, { agentId });
 
       process.stdout.write(chalk.bold("AI") + chalk.dim(": "));

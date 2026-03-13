@@ -2,6 +2,7 @@ import { serve } from "bun";
 import { resolve } from "node:path";
 import { loadConfig } from "./core/config";
 import { MetaStore, type MetaTableName } from "./core/meta";
+import { readFile, writeFile, listFiles } from "./utils/file-utils";
 
 const PORT = 8001;
 
@@ -118,6 +119,57 @@ serve({
         return jsonResponse({ rows });
       } finally {
         meta.close();
+      }
+    }
+
+    // 文件读取 API
+    if (pathname === "/api/file/read" && req.method === "POST") {
+      try {
+        const bodyText = await req.text();
+        const { path } = bodyText ? JSON.parse(bodyText) : {};
+        
+        if (!path) {
+          return errorResponse("缺少 path 参数", 400);
+        }
+
+        const result = await readFile(path);
+        return jsonResponse(result);
+      } catch (error: any) {
+        return errorResponse(error?.message ?? "读取文件失败", 500);
+      }
+    }
+
+    // 文件写入 API
+    if (pathname === "/api/file/write" && req.method === "POST") {
+      try {
+        const bodyText = await req.text();
+        const { path, content } = bodyText ? JSON.parse(bodyText) : {};
+        
+        if (!path || content === undefined) {
+          return errorResponse("缺少 path 或 content 参数", 400);
+        }
+
+        const result = await writeFile(path, content);
+        return jsonResponse(result);
+      } catch (error: any) {
+        return errorResponse(error?.message ?? "写入文件失败", 500);
+      }
+    }
+
+    // 目录列表 API
+    if (pathname === "/api/file/list" && req.method === "POST") {
+      try {
+        const bodyText = await req.text();
+        const { path, limit } = bodyText ? JSON.parse(bodyText) : {};
+        
+        if (!path) {
+          return errorResponse("缺少 path 参数", 400);
+        }
+
+        const result = await listFiles(path, limit ?? 50);
+        return jsonResponse(result);
+      } catch (error: any) {
+        return errorResponse(error?.message ?? "列表目录失败", 500);
       }
     }
 

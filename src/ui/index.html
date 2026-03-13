@@ -42,6 +42,37 @@
             </div>
           </section>
 
+          <section class="section">
+            <h2 class="section-title">📁 本地文件操作</h2>
+            <p class="hint">支持读取、写入和列表本地文件（安全限制适用）</p>
+            
+            <div class="file-op-group">
+              <label class="label">读取文件路径：</label>
+              <div class="input-group">
+                <input id="readFilePath" type="text" class="input" placeholder="例如：/Users/username/file.txt" />
+                <button id="readFileBtn" class="btn btn-secondary">📖 读取</button>
+              </div>
+            </div>
+
+            <div class="file-op-group">
+              <label class="label">写入文件路径：</label>
+              <div class="input-group">
+                <input id="writeFilePath" type="text" class="input" placeholder="例如：/Users/username/output.txt" />
+                <button id="writeFileBtn" class="btn btn-secondary">💾 写入</button>
+              </div>
+            </div>
+
+            <div class="file-op-group">
+              <label class="label">列表目录路径：</label>
+              <div class="input-group">
+                <input id="listDirPath" type="text" class="input" placeholder="例如：/Users/username/Documents" />
+                <button id="listDirBtn" class="btn btn-secondary">📂 列表</button>
+              </div>
+            </div>
+
+            <div id="fileOutput" class="file-output"></div>
+          </section>
+
           <div id="message" class="message"></div>
         </aside>
 

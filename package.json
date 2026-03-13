@@ -1,6 +1,6 @@
 {
   "name": "glideclaw",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Local-first rolling-context AI CLI built with Bun + SQLite.",
   "bin": {
     "glideclaw": "./dist/index.js"

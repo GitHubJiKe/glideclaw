@@ -326,6 +326,80 @@ tr:last-child td {
   font-size: 14px;
 }
 
+/* 文件操作样式 */
+.file-op-group {
+  margin-bottom: 12px;
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-group .input {
+  flex: 1;
+}
+
+.input-group .btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+}
+
+.file-output {
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.file-content {
+  background: #f9f9f9;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.file-content h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.code-block {
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  color: #333;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-list li {
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  color: #333;
+}
+
+.file-list li:last-child {
+  border-bottom: none;
+}
+
 /* 响应式设计 */
 @media (max-width: 1024px) {
   .main {

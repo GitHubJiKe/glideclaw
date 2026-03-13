@@ -9,6 +9,15 @@ const updateBtn = document.getElementById("updateBtn");
 const updateIdInput = document.getElementById("updateId");
 const message = document.getElementById("message");
 
+// 文件操作元素
+const readFilePathInput = document.getElementById("readFilePath");
+const readFileBtn = document.getElementById("readFileBtn");
+const writeFilePathInput = document.getElementById("writeFilePath");
+const writeFileBtn = document.getElementById("writeFileBtn");
+const listDirPathInput = document.getElementById("listDirPath");
+const listDirBtn = document.getElementById("listDirBtn");
+const fileOutput = document.getElementById("fileOutput");
+
 /**
  * 显示消息提示
  */
@@ -349,6 +358,168 @@ exportBtn.addEventListener("click", async () => {
 });
 
 /**
+ * 文件操作功能
+ */
+
+/**
+ * 读取本地文件
+ */
+async function readLocalFile(path) {
+  try {
+    const result = await api("/api/file/read", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    });
+    
+    if (result.success) {
+      setMessage(result.message, "success");
+      return result.data;
+    } else {
+      setMessage(result.message, "error");
+      return null;
+    }
+  } catch (e) {
+    setMessage("读取文件失败: " + (e.message || String(e)), "error");
+    return null;
+  }
+}
+
+/**
+ * 写入本地文件
+ */
+async function writeLocalFile(path, content) {
+  try {
+    const result = await api("/api/file/write", {
+      method: "POST",
+      body: JSON.stringify({ path, content }),
+    });
+    
+    if (result.success) {
+      setMessage(result.message, "success");
+      return true;
+    } else {
+      setMessage(result.message, "error");
+      return false;
+    }
+  } catch (e) {
+    setMessage("写入文件失败: " + (e.message || String(e)), "error");
+    return false;
+  }
+}
+
+/**
+ * 列表本地目录
+ */
+async function listLocalDirectory(path, limit = 50) {
+  try {
+    const result = await api("/api/file/list", {
+      method: "POST",
+      body: JSON.stringify({ path, limit }),
+    });
+    
+    if (result.success) {
+      setMessage(result.message, "success");
+      return result.files;
+    } else {
+      setMessage(result.message, "error");
+      return null;
+    }
+  } catch (e) {
+    setMessage("列表目录失败: " + (e.message || String(e)), "error");
+    return null;
+  }
+}
+
+/**
+ * 文件操作按钮事件监听
+ */
+readFileBtn.addEventListener("click", async () => {
+  const path = readFilePathInput.value.trim();
+  if (!path) {
+    setMessage("请输入文件路径", "error");
+    return;
+  }
+  
+  readFileBtn.disabled = true;
+  readFileBtn.textContent = "读取中...";
+  
+  try {
+    const content = await readLocalFile(path);
+    if (content !== null) {
+      fileOutput.innerHTML = `<div class="file-content">
+        <h4>📖 文件内容</h4>
+        <pre class="code-block">${escapeHtml(content)}</pre>
+      </div>`;
+    }
+  } finally {
+    readFileBtn.disabled = false;
+    readFileBtn.textContent = "📖 读取";
+  }
+});
+
+writeFileBtn.addEventListener("click", async () => {
+  const path = writeFilePathInput.value.trim();
+  if (!path) {
+    setMessage("请输入文件路径", "error");
+    return;
+  }
+  
+  const content = editor.value.trim();
+  if (!content) {
+    setMessage("请在编辑器中输入要写入的内容", "error");
+    return;
+  }
+  
+  writeFileBtn.disabled = true;
+  writeFileBtn.textContent = "写入中...";
+  
+  try {
+    const success = await writeLocalFile(path, content);
+    if (success) {
+      fileOutput.innerHTML = `<div class="file-content">
+        <h4>✅ 写入成功</h4>
+        <p>文件已写入到: ${escapeHtml(path)}</p>
+      </div>`;
+      editor.value = "";
+      writeFilePathInput.value = "";
+    }
+  } finally {
+    writeFileBtn.disabled = false;
+    writeFileBtn.textContent = "💾 写入";
+  }
+});
+
+listDirBtn.addEventListener("click", async () => {
+  const path = listDirPathInput.value.trim();
+  if (!path) {
+    setMessage("请输入目录路径", "error");
+    return;
+  }
+  
+  listDirBtn.disabled = true;
+  listDirBtn.textContent = "列表中...";
+  
+  try {
+    const files = await listLocalDirectory(path);
+    if (files) {
+      const fileList = files.map((f) => {
+        const sizeStr = f.size ? ` (${(f.size / 1024).toFixed(2)} KB)` : "";
+        const icon = f.type === "directory" ? "📁" : "📄";
+        return `<li>${icon} ${escapeHtml(f.name)}${sizeStr}</li>`;
+      }).join("");
+      
+      fileOutput.innerHTML = `<div class="file-content">
+        <h4>📂 目录内容</h4>
+        <ul class="file-list">${fileList}</ul>
+      </div>`;
+    }
+  } finally {
+    listDirBtn.disabled = false;
+    listDirBtn.textContent = "📂 列表";
+  }
+});
+
+/**
  * 事件监听
  */
 reloadBtn.addEventListener("click", loadRows);
@@ -356,3 +527,10 @@ tableSelect.addEventListener("change", loadRows);
 
 // 初始化
 loadTables();
+
+// 导出文件操作函数供其他脚本使用
+window.fileOperations = {
+  read: readLocalFile,
+  write: writeLocalFile,
+  list: listLocalDirectory,
+};

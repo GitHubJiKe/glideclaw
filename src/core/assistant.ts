@@ -102,7 +102,7 @@ export class AssistantManager {
   getSystemPrompt(assistantId: string): string {
     const config = this.getAssistantConfig(assistantId);
     if (!config || !config.soul) {
-      return "你是一个有用的AI助手。";
+      return this.getDefaultSystemPrompt();
     }
 
     const soul = config.soul;
@@ -127,7 +127,53 @@ export class AssistantManager {
       }
     }
 
+    // 添加文件操作功能说明
+    prompt += this.getFileOperationGuidance();
+
     return prompt;
+  }
+
+  /**
+   * 获取默认系统提示词
+   */
+  private getDefaultSystemPrompt(): string {
+    return "你是一个有用的AI助手。" + this.getFileOperationGuidance();
+  }
+
+  /**
+   * 获取文件操作功能说明
+   */
+  private getFileOperationGuidance(): string {
+    return `
+
+## 本地文件操作能力
+
+你具备以下文件操作能力，可以根据用户需求使用：
+
+### 1. 读取文件
+- 用法："读取文件 /path/to/file"、"打开 /path/to/file"、"查看 /path/to/file"
+- 示例：用户说"读取我主目录下的 .zshrc 文件"，你可以请求读取该文件
+- 支持格式：.txt, .md, .json, .js, .ts, .tsx, .jsx, .css, .html, .xml, .yaml, .yml, .toml, .ini, .csv, .sql, .py, .log 等文本文件
+- 限制：最大读取 10MB 的文件
+
+### 2. 写入文件
+- 用法："写入文件 /path/to/file 内容为 [内容文本]"、"保存到 /path/to/file [内容]"
+- 示例：用户要求写入配置文件或代码文件时，你先生成内容，然后请求写入
+- 支持格式：.txt, .md, .json, .js, .ts, .tsx, .jsx, .css, .html, .xml, .yaml, .yml, .toml, .ini, .csv, .sql, .py 等
+
+### 3. 列表目录
+- 用法："列出目录 /path/to/dir"、"查看 /path/to/dir 中的文件"
+- 示例：用户说"列出我主目录下的所有文件"，你可以请求列出该目录
+
+### 文件操作指导原则
+- 当用户提到读取某个文件时，自动提出读取该文件的请求
+- 当用户要求创建或修改文件时，先生成完整的文件内容，然后请求写入
+- 始终遵守安全限制，不访问系统关键目录（/System, /Library, /Applications 等）
+- 仅支持相对安全的文件类型操作
+- 如果用户路径不是绝对路径，请提醒用户提供完整路径
+
+### 返回格式
+当文件操作执行完后，你会在消息中看到格式如：[文件内容] 或 [成功] 的标记，这表示操作已完成。`;
   }
 
   /**
