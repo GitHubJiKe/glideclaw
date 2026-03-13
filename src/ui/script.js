@@ -129,7 +129,7 @@ function renderMessagesTable(rows) {
         }
         return `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
       }).join("");
-      const id = r.id ?? "";
+      const id = String(r.id ?? "");
       const rowJson = encodeURIComponent(JSON.stringify(r));
       const actions = `<td class="row-actions"><button class="btn btn-warning editBtn" data-id="${escapeHtml(id)}" data-row="${rowJson}">编辑</button><button class="btn btn-danger deleteBtn" data-id="${escapeHtml(id)}">删除</button></td>`;
       return `<tr>${cells}${actions}</tr>`;
@@ -160,7 +160,7 @@ function renderConfigHistoryTable(rows) {
         }
         return `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
       }).join("");
-      const id = r.id ?? "";
+      const id = String(r.id ?? "");
       const rowJson = encodeURIComponent(JSON.stringify(r));
       const actions = `<td class="row-actions"><button class="btn btn-warning editBtn" data-id="${escapeHtml(id)}" data-row="${rowJson}">编辑</button><button class="btn btn-danger deleteBtn" data-id="${escapeHtml(id)}">删除</button></td>`;
       return `<tr>${cells}${actions}</tr>`;
@@ -181,7 +181,7 @@ function renderGenericTable(table, rows) {
   const tbody = `<tbody>${rows
     .map((r) => {
       const cells = cols.map((c) => `<td>${escapeHtml(String(r[c] ?? ""))}</td>`).join("");
-      const id = r.id ?? "";
+      const id = String(r.id ?? "");
       const rowJson = encodeURIComponent(JSON.stringify(r));
       const actions = `<td class="row-actions"><button class="btn btn-warning editBtn" data-id="${escapeHtml(id)}" data-row="${rowJson}">编辑</button><button class="btn btn-danger deleteBtn" data-id="${escapeHtml(id)}">删除</button></td>`;
       return `<tr>${cells}${actions}</tr>`;
@@ -242,7 +242,9 @@ function escapeHtml(text) {
     '"': "&quot;",
     "'": "&#039;",
   };
-  return text.replace(/[&<>"']/g, (m) => map[m]);
+  // 确保 text 是字符串
+  const str = String(text ?? "");
+  return str.replace(/[&<>"']/g, (m) => map[m]);
 }
 
 /**

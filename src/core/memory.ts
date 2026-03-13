@@ -50,6 +50,13 @@ export class MemoryStore {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_agent_id ON messages(agent_id);`);
 
+    // 数据库迁移：如果 messages 表存在但没有 agent_id 列，则添加
+    try {
+      this.db.run(`ALTER TABLE messages ADD COLUMN agent_id TEXT;`);
+    } catch {
+      // 列已存在，忽略错误
+    }
+
     this.db.run(`
       CREATE TABLE IF NOT EXISTS config_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

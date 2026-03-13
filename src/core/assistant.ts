@@ -108,6 +108,17 @@ export class AssistantManager {
     const soul = config.soul;
     let prompt = soul.prompt || "你是一个有用的AI助手。";
 
+    // 添加用户信息
+    if (config.user) {
+      prompt += `\n\n用户信息：`;
+      if (config.user.name) {
+        prompt += `\n用户名：${config.user.name}`;
+      }
+      if (config.user.email) {
+        prompt += `\n邮箱：${config.user.email}`;
+      }
+    }
+
     // 如果有身份设置，添加到提示词中
     if (config.identity) {
       prompt += `\n\n身份设置：${config.identity.name}`;
