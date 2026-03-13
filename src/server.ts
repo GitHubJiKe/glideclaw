@@ -68,7 +68,8 @@ serve({
       const table = decodeURIComponent(rawTable) as MetaTableName;
       const id = rawId ? decodeURIComponent(rawId) : undefined;
 
-      if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+      const supportedTables = ["agents", "users", "souls", "identities", "heartbeats", "change_history", "messages", "config_history"];
+      if (!supportedTables.includes(table)) {
         return errorResponse("不支持的表：" + table, 404);
       }
 
@@ -107,7 +108,8 @@ serve({
 
     if (pathname.startsWith("/api/export/") && req.method === "GET") {
       const table = decodeURIComponent(pathname.replace("/api/export/", "")) as MetaTableName;
-      if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+      const supportedTables = ["agents", "users", "souls", "identities", "heartbeats", "change_history", "messages", "config_history"];
+      if (!supportedTables.includes(table)) {
         return errorResponse("不支持的表：" + table, 404);
       }
       const meta = await createMeta();

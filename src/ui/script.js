@@ -103,6 +103,78 @@ async function loadRows() {
  * 渲染表格
  */
 function renderTable(table, rows) {
+  // 为messages和config_history表提供特殊的展示方式
+  if (table === "messages") {
+    renderMessagesTable(rows);
+  } else if (table === "config_history") {
+    renderConfigHistoryTable(rows);
+  } else {
+    renderGenericTable(table, rows);
+  }
+}
+
+/**
+ * 渲染消息表 - 以卡片形式展示对话内容
+ */
+function renderMessagesTable(rows) {
+  const cols = Object.keys(rows[0]);
+  const thead = `<thead><tr>${cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("")}<th>操作</th></tr></thead>`;
+  
+  const tbody = `<tbody>${rows
+    .map((r) => {
+      const contentPreview = String(r.content ?? "").substring(0, 100) + (String(r.content ?? "").length > 100 ? "..." : "");
+      const cells = cols.map((c) => {
+        if (c === "content") {
+          return `<td><div class="content-preview" title="${escapeHtml(String(r[c] ?? ""))}">${escapeHtml(contentPreview)}</div></td>`;
+        }
+        return `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
+      }).join("");
+      const id = r.id ?? "";
+      const rowJson = encodeURIComponent(JSON.stringify(r));
+      const actions = `<td class="row-actions"><button class="btn btn-warning editBtn" data-id="${escapeHtml(id)}" data-row="${rowJson}">编辑</button><button class="btn btn-danger deleteBtn" data-id="${escapeHtml(id)}">删除</button></td>`;
+      return `<tr>${cells}${actions}</tr>`;
+    })
+    .join("")}</tbody>`;
+  
+  rowsDiv.innerHTML = `<table>${thead}${tbody}</table>`;
+  attachRowActions("messages");
+}
+
+/**
+ * 渲染配置历史表 - 展示配置变更记录
+ */
+function renderConfigHistoryTable(rows) {
+  const cols = Object.keys(rows[0]);
+  const thead = `<thead><tr>${cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("")}<th>操作</th></tr></thead>`;
+  
+  const tbody = `<tbody>${rows
+    .map((r) => {
+      const oldValuePreview = r.old_value ? String(r.old_value).substring(0, 50) : "(无)";
+      const newValuePreview = r.new_value ? String(r.new_value).substring(0, 50) : "(无)";
+      
+      const cells = cols.map((c) => {
+        if (c === "old_value") {
+          return `<td><div class="content-preview" title="${escapeHtml(String(r[c] ?? ""))}">${escapeHtml(oldValuePreview)}</div></td>`;
+        } else if (c === "new_value") {
+          return `<td><div class="content-preview" title="${escapeHtml(String(r[c] ?? ""))}">${escapeHtml(newValuePreview)}</div></td>`;
+        }
+        return `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
+      }).join("");
+      const id = r.id ?? "";
+      const rowJson = encodeURIComponent(JSON.stringify(r));
+      const actions = `<td class="row-actions"><button class="btn btn-warning editBtn" data-id="${escapeHtml(id)}" data-row="${rowJson}">编辑</button><button class="btn btn-danger deleteBtn" data-id="${escapeHtml(id)}">删除</button></td>`;
+      return `<tr>${cells}${actions}</tr>`;
+    })
+    .join("")}</tbody>`;
+  
+  rowsDiv.innerHTML = `<table>${thead}${tbody}</table>`;
+  attachRowActions("config_history");
+}
+
+/**
+ * 渲染通用表格
+ */
+function renderGenericTable(table, rows) {
   const cols = Object.keys(rows[0]);
   const thead = `<thead><tr>${cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("")}<th>操作</th></tr></thead>`;
   

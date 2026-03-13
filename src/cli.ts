@@ -11,6 +11,8 @@ import {
 } from "@clack/prompts";
 import { loadConfig, defaultRcPath, updateRcFile } from "./core/config";
 import { MemoryStore } from "./core/memory";
+import { MetaStore } from "./core/meta";
+import { AssistantManager } from "./core/assistant";
 import { streamChatToStdout } from "./core/llm";
 import type { ChatMessage } from "./types/chat";
 import { estimateTokensFromMessages } from "./utils/tokens";
@@ -182,12 +184,8 @@ export async function cmdResetDb() {
 
   const cfg = await loadConfig();
   try {
-    await Bun.write(Bun.file(cfg.dbPath), ""); // ensure path writable if needed
-  } catch {
-    // ignore
-  }
-  try {
-    await Bun.remove(cfg.dbPath);
+    const { unlinkSync } = await import("node:fs");
+    unlinkSync(cfg.dbPath);
   } catch {
     // ignore if not exists
   }
@@ -200,10 +198,23 @@ export async function cmdResetDb() {
 export async function cmdChat() {
   const cfg = await loadConfig();
   const memory = new MemoryStore({ dbPath: cfg.dbPath });
+  const meta = new MetaStore({ dbPath: cfg.dbPath });
+  const assistantMgr = new AssistantManager(meta, cfg);
+  
   intro(chalk.bold("GlideClaw Chat"));
   console.log(chalk.dim("输入 /exit 退出。"));
 
   try {
+    // 获取默认助手配置
+    const assistantConfig = assistantMgr.getDefaultAssistantConfig();
+    if (!assistantConfig) {
+      console.error(chalk.red("错误：无法加载助手配置"));
+      return;
+    }
+
+    const agentId = assistantConfig.agent.id;
+    const systemPrompt = assistantMgr.getSystemPrompt(agentId);
+
     while (true) {
       const input = await text({
         message: chalk.bold("你说"),
@@ -221,9 +232,15 @@ export async function cmdChat() {
       }
 
       const history = memory.getContext(cfg.windowDays);
-      const messages: ChatMessage[] = [...history, { role: "user", content: q }];
+      // 构建消息：系统提示词 + 历史对话 + 当前输入
+      const messages: ChatMessage[] = [
+        { role: "system", content: systemPrompt },
+        ...history,
+        { role: "user", content: q },
+      ];
 
-      memory.saveMessage("user", q);
+      // 保存用户消息
+      memory.saveMessage("user", q, { agentId });
 
       process.stdout.write(chalk.bold("AI") + chalk.dim(": "));
       let answer = "";
@@ -241,10 +258,12 @@ export async function cmdChat() {
         process.stdout.write("\n");
       }
 
-      memory.saveMessage("assistant", answer);
+      // 保存AI响应
+      memory.saveMessage("assistant", answer, { agentId });
     }
   } finally {
     memory.close();
+    meta.close();
   }
 }
 
@@ -261,7 +280,7 @@ export async function cmdWeb(argv: string[] = []) {
 
     // 从参数中解析端口号，默认 8001
     let PORT = 8001;
-    if (argv.length > 0) {
+    if (argv.length > 0 && argv[0]) {
       const portArg = argv[0];
       const parsedPort = Number.parseInt(portArg, 10);
       if (!Number.isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
@@ -363,7 +382,8 @@ export async function cmdWeb(argv: string[] = []) {
           const table = decodeURIComponent(rawTable) as any;
           const id = rawId ? decodeURIComponent(rawId) : undefined;
 
-          if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+          const supportedTables = ["agents", "users", "souls", "identities", "heartbeats", "change_history", "messages", "config_history"];
+          if (!supportedTables.includes(table)) {
             return errorResponse("不支持的表：" + table, 404);
           }
 
@@ -402,7 +422,8 @@ export async function cmdWeb(argv: string[] = []) {
 
         if (pathname.startsWith("/api/export/") && req.method === "GET") {
           const table = decodeURIComponent(pathname.replace("/api/export/", "")) as any;
-          if (!["agents", "users", "souls", "identities", "heartbeats", "change_history"].includes(table)) {
+          const supportedTables = ["agents", "users", "souls", "identities", "heartbeats", "change_history", "messages", "config_history"];
+          if (!supportedTables.includes(table)) {
             return errorResponse("不支持的表：" + table, 404);
           }
           const meta = await createMeta();

@@ -15,6 +15,11 @@ export type SaveMessageOptions = {
    * 主要用于测试或导入历史。
    */
   timestamp?: string;
+  agentId?: string;
+};
+
+export type SaveConfigHistoryOptions = {
+  timestamp?: string;
 };
 
 export class MemoryStore {
@@ -38,10 +43,26 @@ export class MemoryStore {
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         tokens INTEGER,
+        agent_id TEXT,
         timestamp TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_agent_id ON messages(agent_id);`);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS config_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        change_reason TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_config_history_agent_id ON config_history(agent_id);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_config_history_timestamp ON config_history(timestamp);`);
   }
 
   cleanupOldMessages(windowDays: number) {
@@ -57,15 +78,16 @@ export class MemoryStore {
     if (options.timestamp) {
       this.db
         .query(
-          `INSERT INTO messages (role, content, tokens, timestamp) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO messages (role, content, tokens, agent_id, timestamp) VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(role, content, t, options.timestamp);
+        .run(role, content, t, options.agentId ?? null, options.timestamp);
       return;
     }
-    this.db.query(`INSERT INTO messages (role, content, tokens) VALUES (?, ?, ?)`).run(
+    this.db.query(`INSERT INTO messages (role, content, tokens, agent_id) VALUES (?, ?, ?, ?)`).run(
       role,
       content,
       t,
+      options.agentId ?? null,
     );
   }
 
@@ -103,6 +125,81 @@ export class MemoryStore {
       | { c: number }
       | undefined;
     return row?.c ?? 0;
+  }
+
+  saveConfigHistory(
+    agentId: string,
+    fieldName: string,
+    oldValue: string | null,
+    newValue: string | null,
+    changeReason?: string,
+    options: SaveConfigHistoryOptions = {},
+  ) {
+    if (options.timestamp) {
+      this.db
+        .query(
+          `INSERT INTO config_history (agent_id, field_name, old_value, new_value, change_reason, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(agentId, fieldName, oldValue, newValue, changeReason ?? null, options.timestamp);
+      return;
+    }
+    this.db
+      .query(
+        `INSERT INTO config_history (agent_id, field_name, old_value, new_value, change_reason) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(agentId, fieldName, oldValue, newValue, changeReason ?? null);
+  }
+
+  getConfigHistory(agentId: string, limitDays: number = 30): Array<any> {
+    const rows = this.db
+      .query(
+        `SELECT id, agent_id, field_name, old_value, new_value, change_reason, timestamp
+         FROM config_history
+         WHERE agent_id = ? AND timestamp >= datetime('now', '-' || ? || ' days')
+         ORDER BY timestamp DESC, id DESC`,
+      )
+      .all(agentId, limitDays) as Array<any>;
+
+    return rows;
+  }
+
+  getAllConfigHistory(limitDays: number = 30, limit: number = 1000): Array<any> {
+    const rows = this.db
+      .query(
+        `SELECT id, agent_id, field_name, old_value, new_value, change_reason, timestamp
+         FROM config_history
+         WHERE timestamp >= datetime('now', '-' || ? || ' days')
+         ORDER BY timestamp DESC, id DESC
+         LIMIT ?`,
+      )
+      .all(limitDays, limit) as Array<any>;
+
+    return rows;
+  }
+
+  getMessages(agentId?: string, limit: number = 1000): Array<any> {
+    let rows: Array<any>;
+    
+    if (agentId) {
+      const stmt = this.db.query(
+        `SELECT id, role, content, tokens, agent_id, timestamp
+         FROM messages
+         WHERE agent_id = ?
+         ORDER BY timestamp DESC, id DESC
+         LIMIT ?`,
+      );
+      rows = stmt.all(agentId, limit) as Array<any>;
+    } else {
+      const stmt = this.db.query(
+        `SELECT id, role, content, tokens, agent_id, timestamp
+         FROM messages
+         ORDER BY timestamp DESC, id DESC
+         LIMIT ?`,
+      );
+      rows = stmt.all(limit) as Array<any>;
+    }
+
+    return rows;
   }
 
   close() {

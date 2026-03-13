@@ -8,7 +8,9 @@ export type MetaTableName =
   | "souls"
   | "identities"
   | "heartbeats"
-  | "change_history";
+  | "change_history"
+  | "messages"
+  | "config_history";
 
 export type MetaOptions = {
   dbPath: string;
@@ -93,6 +95,33 @@ export class MetaStore {
       );
     `);
 
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tokens INTEGER,
+        agent_id TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_messages_agent_id ON messages(agent_id);`);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS config_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        change_reason TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_config_history_agent_id ON config_history(agent_id);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_config_history_timestamp ON config_history(timestamp);`);
+
     this.seedIfEmpty();
   }
 
@@ -172,7 +201,7 @@ export class MetaStore {
   }
 
   listTables(): MetaTableName[] {
-    return ["agents", "users", "souls", "identities", "heartbeats", "change_history"];
+    return ["agents", "users", "souls", "identities", "heartbeats", "change_history", "messages", "config_history"];
   }
 
   getRows(table: MetaTableName, limit = 100): any[] {

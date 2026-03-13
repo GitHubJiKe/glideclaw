@@ -299,6 +299,22 @@ tr:last-child td {
   margin-right: 8px;
 }
 
+/* 内容预览 */
+.content-preview {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  cursor: help;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 12px;
+  color: #666;
+  background: #f9f9f9;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 /* 空状态 */
 .empty-state {
   text-align: center;

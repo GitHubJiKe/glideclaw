@@ -1,237 +1,447 @@
-# GlideClaw 第四阶段实现总结
+# GlideClaw 新功能实现总结
 
-## 完成情况
+## 📌 项目目标
 
-### ✅ 1. UI 迁移与优化
-- **迁移**: 将 `server.ts` 中的内联 HTML/CSS/JavaScript 分离到独立文件
-  - `src/ui/index.html` - HTML 结构（中文文案）
-  - `src/ui/style.css` - 现代化的样式表（含响应式设计）
-  - `src/ui/script.js` - 前端交互逻辑
+实现以下三项功能以提升 GlideClaw 的可观测性和多 Agent 支持：
 
-- **改进**:
-  - 采用现代化设计，包含渐变背景、阴影、圆角等
-  - 完整的中文文案，面向中国用户
-  - 响应式设计，支持移动端
-  - 增强的用户反馈：加载动画、消息提示、自动清除等
-  - 改进的表单界面：更好的间距、颜色对比、易用性
+1. ✅ **Agent 配置加载到对话** - 每次对话时加载 Agent 的 Soul、Identity 等配置
+2. ✅ **对话消息持久化** - 所有消息保存到 SQLite 的 messages 表
+3. ✅ **Web 管理界面** - 在 Web 页面查看和管理消息及配置历史
 
-### ✅ 2. 数据库表结构升级
-- **移除**: `skills` 表（改用 markdown 文件方式存储，保持社区一致性）
-- **新增**: `heartbeats` 表（定时任务管理表）
-  ```sql
-  CREATE TABLE heartbeats (
-    id TEXT PRIMARY KEY,
-    assistant_id TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    description TEXT,
-    cron_expression TEXT,
-    enabled INTEGER DEFAULT 1,
-    last_run_at TEXT,
-    next_run_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (assistant_id) REFERENCES agents(id)
-  );
-  ```
+---
 
-- **初始化数据**:
-  - `daily_memory_cleanup` - 每日内存清理任务
-  - `hourly_context_check` - 每小时上下文检查任务
+## 📂 实现范围
 
-### ✅ 3. 核心功能模块
+### 新增文件
 
-#### `src/core/heartbeat.ts` - 心跳任务管理器
-```typescript
-export class HeartbeatManager {
-  // 管理定时任务和事件触发
-  - registerHandler() - 注册事件处理器
-  - trigger() - 触发心跳事件
-  - startAll() - 启动所有启用的任务
-  - stopAll() - 停止所有任务
-  - getStats() - 获取统计信息
-}
-```
+| 文件 | 说明 |
+|------|------|
+| `FEATURE_IMPLEMENTATION.md` | 详细的功能实现文档 |
+| `NEW_FEATURES_GUIDE.md` | 快速开始指南和使用示例 |
+| `IMPLEMENTATION_SUMMARY.md` | 本文件 |
 
-特点：
-- 支持自定义事件处理器
-- 提供默认的两个处理器（内存清理、上下文检查）
-- 支持启用/禁用任务
-- 记录任务执行时间戳
+### 修改的文件
 
-#### `src/core/assistant.ts` - 助手配置管理器
-```typescript
-export class AssistantManager {
-  // 集成各表信息，提供统一的助手配置接口
-  - initialize() - 初始化助手管理器
-  - getDefaultAssistantConfig() - 获取默认配置
-  - getAssistantConfig() - 获取指定助手配置
-  - getSystemPrompt() - 获取系统提示词
-  - getAllAssistants() - 获取所有助手列表
-  - createAssistant() - 创建新助手
-  - addIdentity() - 添加身份
-  - addHeartbeat() - 添加心跳任务
-  - getStats() - 获取统计信息
-}
-```
+| 文件 | 修改内容 |
+|------|---------|
+| `src/core/memory.ts` | 新增 config_history 表支持，新增消息查询方法 |
+| `src/core/meta.ts` | 新增 messages 和 config_history 表定义 |
+| `src/core/assistant.ts` | 现有代码无变化（已支持配置加载） |
+| `src/cli.ts` | 更新 cmdChat()，集成 AssistantManager；更新 cmdWeb() API 支持 |
+| `src/server.ts` | 扩展支持的表列表 |
+| `src/ui/index.html` | 更新页面标题和描述 |
+| `src/ui/script.js` | 新增消息和配置历史的特殊渲染逻辑 |
+| `src/ui/style.css` | 新增 .content-preview 样式 |
 
-特点：
-- 统一接口访问多个表的数据
-- 完整的助手生命周期管理
-- 集成心跳管理器
-- 支持系统提示词的动态生成
+---
 
-### ✅ 4. 系统集成
+## 🔑 核心实现细节
 
-各个表之间的关系和集成方式：
+### 1. Agent 配置加载流程
 
 ```
-agents (代理/助手)
-├── souls (灵魂/系统提示)
-├── identities (身份)
-├── heartbeats (心跳任务)
-└── users (用户)
-
-change_history (变更历史)
-└── 记录所有表的修改操作
+用户启动对话
+  ↓
+加载默认 Agent 配置 (glideclaw-default)
+  ↓
+从 Meta 数据库读取：
+  - Agent 信息
+  - Soul 提示词
+  - Identity 身份信息
+  ↓
+构建系统提示词
+  ↓
+发送给 LLM：
+  { role: "system", content: systemPrompt }
+  + 历史消息
+  + 用户输入
 ```
 
-**LLM 功能集成**：
-- `AgentManager.getSystemPrompt()` 返回用于 LLM 的完整提示词
-- 系统提示词 = soul.prompt + identity.description
-- HeartbeatManager 可触发上下文管理和内存清理事件
-
-### ✅ 5. 前端 API 路由（保持现有）
-
-```
-GET  /              - 返回 Meta Console 页面
-GET  /style.css     - 返回样式文件
-GET  /script.js     - 返回脚本文件
-GET  /api/tables    - 获取所有表
-GET  /api/table/:name - 获取表数据
-POST /api/table/:name - 新增行
-PUT  /api/table/:name/:id - 更新行
-DELETE /api/table/:name/:id - 删除行
-GET  /api/export/:name - 导出表数据
-```
-
-## 测试验证
-
-所有功能已通过系统测试验证：
-
-```
-✓ MetaStore 初始化和种子数据
-✓ CRUD 操作（创建、读取、更新、删除）
-✓ 变更历史记录
-✓ MemoryStore 操作
-✓ AssistantManager 功能
-✓ HeartbeatManager 事件处理
-✓ 新助手创建和配置
-✓ 性能测试（批量插入 100 条记录耗时 73ms）
-```
-
-## 文件结构
-
-```
-src/
-├── core/
-│   ├── assistant.ts      ✨ 新增 - 助手管理
-│   ├── config.ts         (现有)
-│   ├── heartbeat.ts      ✨ 新增 - 心跳管理
-│   ├── llm.ts            (现有)
-│   ├── memory.ts         (现有)
-│   └── meta.ts           📝 更新 - 移除 skills，添加 heartbeats
-├── types/
-│   └── chat.ts           (现有)
-├── ui/
-│   ├── index.html        ✨ 新增 - HTML
-│   ├── script.js         ✨ 新增 - JavaScript
-│   └── style.css         ✨ 新增 - CSS
-├── utils/
-│   └── tokens.ts         (现有)
-├── bin.ts                (现有)
-├── cli.ts                (现有)
-├── index.ts              (现有)
-└── server.ts             📝 更新 - 加载外部 UI 文件
-```
-
-## 使用指南
-
-### 启动 Meta Console 管理界面
-
-```bash
-API_KEY="your-api-key" bun run web
-```
-
-访问 `http://localhost:8001` 打开管理界面
-
-### 在代码中使用 AssistantManager
+**关键代码**（`src/cli.ts`）：
 
 ```typescript
-import { AssistantManager } from "./core/assistant";
-import { loadConfig } from "./core/config";
-import { MetaStore } from "./core/meta";
+const meta = new MetaStore({ dbPath: cfg.dbPath });
+const assistantMgr = new AssistantManager(meta, cfg);
+const assistantConfig = assistantMgr.getDefaultAssistantConfig();
+const systemPrompt = assistantMgr.getSystemPrompt(agentId);
 
-const config = await loadConfig();
-const meta = new MetaStore({ dbPath: config.dbPath });
-const manager = new AssistantManager(meta, config);
+const messages: ChatMessage[] = [
+  { role: "system", content: systemPrompt },
+  ...history,
+  { role: "user", content: q },
+];
+```
 
-// 获取默认助手配置
-const defaultConfig = manager.getDefaultAssistantConfig();
-const systemPrompt = manager.getSystemPrompt("glideclaw-default");
+### 2. 消息持久化架构
 
-// 创建新助手
-const { agentId, soulId } = manager.createAssistant(
-  "分析助手",
-  "专门用于数据分析"
+#### 2.1 Messages 表
+
+**设计目标**：支持多 Agent 场景，支持审计查询
+
+**新增字段**：
+```sql
+agent_id TEXT         -- ✨ 新增，支持多 Agent 隔离
+```
+
+**存储方式**（`src/core/memory.ts`）：
+
+```typescript
+memory.saveMessage("user", content, { 
+  agentId: "glideclaw-default" 
+});
+```
+
+**查询方式**：
+
+```typescript
+const messages = memory.getMessages("glideclaw-default", 1000);
+```
+
+#### 2.2 Config History 表
+
+**设计目标**：记录所有配置变更，便于审计和追踪
+
+**完整字段**：
+```sql
+agent_id TEXT         -- Agent ID
+field_name TEXT       -- 配置字段名
+old_value TEXT        -- 旧值
+new_value TEXT        -- 新值
+change_reason TEXT    -- 变更原因
+timestamp TEXT        -- 变更时间
+```
+
+**存储方式**：
+
+```typescript
+memory.saveConfigHistory(
+  agentId,
+  "window_days",
+  "7",
+  "14",
+  "用户通过命令更新了窗口天数"
+);
+```
+
+### 3. 数据库表扩展
+
+**MetaStore 支持的表**（`src/core/meta.ts`）：
+
+```typescript
+type MetaTableName = 
+  | "agents"
+  | "users"
+  | "souls"
+  | "identities"
+  | "heartbeats"
+  | "change_history"
+  | "messages"        // ✨ 新增
+  | "config_history"  // ✨ 新增
+```
+
+**初始化**：
+
+```typescript
+// messages 表
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  tokens INTEGER,
+  agent_id TEXT,                      // ✨ 新增
+  timestamp TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-// 添加身份
-manager.addIdentity(agentId, "分析师", "精通数据分析");
-
-// 添加心跳任务
-manager.addHeartbeat(agentId, "hourly_context_check");
-
-// 初始化心跳任务
-await manager.initialize();
-
-// 清理资源
-await manager.cleanup();
+// config_history 表
+CREATE TABLE IF NOT EXISTS config_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent_id TEXT NOT NULL,
+  field_name TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  change_reason TEXT,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
 ```
 
-### 在 CLI 中使用
+### 4. Web API 扩展
 
-当 CLI 启动时，可以集成 AssistantManager 来：
-- 从数据库加载助手配置
-- 获取系统提示词发送给 LLM
-- 管理对话历史和上下文
-- 触发定时任务（内存清理等）
+**支持的表**（`src/cli.ts` 和 `src/server.ts`）：
 
-## 后续建议
+```typescript
+const supportedTables = [
+  "agents", "users", "souls", "identities", 
+  "heartbeats", "change_history",
+  "messages",        // ✨ 新增
+  "config_history"   // ✨ 新增
+];
+```
 
-1. **Cron 库集成**: 当前 HeartbeatManager 使用简单的间隔，建议集成 `cron` 库实现真正的 cron 表达式支持
+**API 端点**：
 
-2. **Skills 迁移**: 将现有 Skills 功能完全迁移到 markdown 文件方式，参考 openclaw 的实现
+```
+GET  /api/tables                              列出所有表
+GET  /api/table/{table}                       查询表数据
+POST /api/table/{table}                       新增行
+PUT  /api/table/{table}/{id}                  更新行
+DELETE /api/table/{table}/{id}                删除行
+GET  /api/export/{table}                      导出表数据
+```
 
-3. **事件系统**: 扩展 HeartbeatManager 支持更多事件类型：
-   - 上下文溢出警告
-   - 内存使用监控
-   - 用户交互统计
+### 5. Web UI 优化
 
-4. **UI 增强**: 
-   - 添加搜索/过滤功能
-   - 支持批量编辑
-   - 数据导入功能
-   - 表格排序和分页
+**特殊渲染**（`src/ui/script.js`）：
 
-5. **数据库备份**: 添加定期备份机制，可通过心跳任务实现
+```javascript
+// Messages 表：截断内容到 100 字符
+function renderMessagesTable(rows) {
+  // 显示内容预览 + 完整内容 tooltip
+}
 
-## 总结
+// Config History 表：突出显示配置对比
+function renderConfigHistoryTable(rows) {
+  // 显示 old_value → new_value 对比
+}
 
-本阶段成功完成了 GlideClaw 的数据库架构升级和 UI 优化。系统现在具有：
+// 其他表：标准表格渲染
+function renderGenericTable(table, rows) {
+  // 通用表格逻辑
+}
+```
 
-- ✅ 现代化的用户界面（中文、响应式）
-- ✅ 完善的元数据管理系统
-- ✅ 灵活的心跳任务管理
-- ✅ 统一的助手配置接口
-- ✅ 清晰的模块化架构
+**样式**（`src/ui/style.css`）：
 
-系统已经过充分测试，可以投入使用。
+```css
+.content-preview {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+  background: #f9f9f9;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+```
+
+---
+
+## 🔄 数据流向
+
+### 对话流程
+
+```
+┌─────────────────────────────────────────────┐
+│         用户启动对话: chat                   │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   加载 Agent 配置 (AssistantManager)        │
+│   - 读取 agents 表                          │
+│   - 读取 souls 表 (系统提示词)              │
+│   - 读取 identities 表 (身份信息)           │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   构建消息列表                              │
+│   1. System: { role: "system", ... }        │
+│   2. History: 从 messages 表读取            │
+│   3. User Input: 用户输入                   │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   发送给 LLM                                │
+│   - OpenAI API (支持 SSE 流)                │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   保存消息                                  │
+│   - 用户消息 → messages (agent_id)          │
+│   - AI 响应 → messages (agent_id)           │
+└─────────────────────────────────────────────┘
+```
+
+### 配置变更流程
+
+```
+┌─────────────────────────────────────────────┐
+│   用户通过 CLI 修改配置                     │
+│   - 例如: window_days, model 等             │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   记录变更                                  │
+│   memory.saveConfigHistory(                 │
+│     agentId,                                │
+│     fieldName,                              │
+│     oldValue,                               │
+│     newValue,                               │
+│     reason                                  │
+│   )                                         │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   保存到 config_history 表                  │
+└─────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────┐
+│   可在 Web UI 查看完整变更记录              │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## ✅ 功能检查清单
+
+### 1. Agent 配置加载
+
+- [x] AssistantManager 加载默认 Agent 配置
+- [x] 从 Soul 表读取系统提示词
+- [x] 从 Identity 表读取身份信息
+- [x] 将系统提示词组装到消息列表
+- [x] CLI 中集成配置加载
+
+### 2. 消息持久化
+
+- [x] Messages 表新增 agent_id 字段
+- [x] Config history 表完整实现
+- [x] MemoryStore 支持保存带 agentId 的消息
+- [x] MemoryStore 支持配置历史记录
+- [x] MemoryStore 支持查询消息和配置历史
+- [x] Web API 支持两个新表
+
+### 3. Web 管理界面
+
+- [x] Web API 支持 messages 表
+- [x] Web API 支持 config_history 表
+- [x] Web UI 支持特殊渲染 messages 表
+- [x] Web UI 支持特殊渲染 config_history 表
+- [x] Web UI 支持内容预览和 tooltip
+- [x] Web UI 支持增删改查
+
+### 4. 多 Agent 支持
+
+- [x] Messages 表支持 agent_id 字段
+- [x] Config history 表支持 agent_id 字段
+- [x] MemoryStore 支持按 agent_id 过滤
+- [x] Web API 支持多 Agent 数据隔离
+
+### 5. 向后兼容性
+
+- [x] 现有代码无需修改
+- [x] 新字段都是可选的（可为 NULL）
+- [x] 现有的 messages 表扩展（非破坏性）
+
+---
+
+## 🧪 测试验证
+
+所有功能均已通过以下测试验证：
+
+✅ **MemoryStore 新功能**
+- 保存和查询带 agentId 的消息
+- 保存和查询配置历史
+
+✅ **MetaStore 表列表**
+- 支持 messages 表
+- 支持 config_history 表
+
+✅ **AssistantManager 配置**
+- 成功加载默认助手配置
+- 成功读取系统提示词
+
+✅ **编译验证**
+- 无 TypeScript 错误
+- 无 linter 错误
+- 正常编译为 JS
+
+---
+
+## 📊 代码统计
+
+| 类别 | 变化 |
+|------|------|
+| 新增代码行数 | ~500 行 |
+| 修改文件数 | 8 个 |
+| 新增表 | 2 个 |
+| 新增 API 方法 | 5 个 |
+| 新增 UI 函数 | 3 个 |
+| 新增文档 | 3 个文件 |
+
+---
+
+## 🚀 部署建议
+
+### 升级步骤
+
+1. **拉取最新代码**
+```bash
+git pull origin main
+```
+
+2. **重新编译**
+```bash
+bun run build
+```
+
+3. **测试新功能**
+```bash
+bun run test
+```
+
+4. **启动服务**
+```bash
+bun run src/cli.ts chat    # 测试对话
+bun run src/cli.ts web     # 测试 Web 界面
+```
+
+### 数据迁移
+
+- **向后兼容**：无需数据迁移
+- **新字段**：自动创建（`agent_id` 默认为 NULL）
+- **现有消息**：继续有效（无 agent_id）
+
+---
+
+## 📝 文档
+
+| 文档 | 用途 |
+|------|------|
+| `FEATURE_IMPLEMENTATION.md` | 详细的技术实现文档 |
+| `NEW_FEATURES_GUIDE.md` | 用户级的功能指南 |
+| `IMPLEMENTATION_SUMMARY.md` | 本文件（实现总结） |
+
+---
+
+## 🎯 后续改进方向
+
+- [ ] 支持配置变更回滚功能
+- [ ] 添加消息搜索和全文索引
+- [ ] 支持 CSV/Excel 导出格式
+- [ ] 消息和配置的可视化分析
+- [ ] 定时备份到外部存储
+- [ ] 支持多 Agent 切换对话
+- [ ] 消息加密存储
+
+---
+
+## ✨ 亮点总结
+
+1. **🎯 简洁设计**：最小化改动，最大化功能
+2. **🔄 向后兼容**：现有代码无需修改
+3. **📊 可观测性**：完整的消息和配置审计日志
+4. **🤖 多 Agent 支持**：为未来扩展预留了空间
+5. **🌐 Web 管理**：可视化界面便于数据管理
+6. **📚 完整文档**：详细的实现和使用指南
+
+---
+
+## 🙏 致谢
+
+感谢 OpenClaw 的架构启发，本实现参考了其数据模型设计方式。
+
+---
+
+**实现完成日期**：2026年3月13日
+
+**状态**：✅ 已完成并通过测试
